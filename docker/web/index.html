@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>GPS LoRa Dashboard</title>
+
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <style>
+    body { margin:0; font-family: Arial, sans-serif; }
+    header { padding:10px 14px; border-bottom:1px solid #ddd; }
+    #map { height: calc(100vh - 130px); }
+    .panel { padding: 10px 14px; border-top:1px solid #ddd; display:flex; gap:16px; flex-wrap:wrap; }
+    .card { border:1px solid #ddd; border-radius:10px; padding:10px; min-width:280px; }
+    .muted { color:#666; font-size:12px; }
+    .ok { color:#0a7; font-weight:600; }
+    .warn { color:#b70; font-weight:600; }
+    code { background:#f6f6f6; padding:2px 6px; border-radius:6px; }
+  </style>
+</head>
+<body>
+  <header>
+    <div><b>GPS LoRa Dashboard</b></div>
+    <div class="muted">MQTT topic: <code>gps/lora/#</code> • WebSocket: <code>bridge:13000</code></div>
+    <div id="status" class="muted">Estado: conectando...</div>
+  </header>
+
+  <div id="map"></div>
+
+  <div class="panel">
+    <div class="card">
+      <div><b>Último mensaje</b></div>
+      <div id="last" class="muted">—</div>
+    </div>
+    <div class="card">
+      <div><b>Nodos</b></div>
+      <div id="nodes" class="muted">0</div>
+    </div>
+    <div class="card">
+      <div><b>Notas</b></div>
+      <div class="muted">
+        - Si un nodo envía <code>{"status":"NO_FIX"}</code>, se muestra como “sin fix”.<br>
+        - Cuando tenga <code>lat/lng</code>, se dibuja o actualiza en el mapa.
+      </div>
+    </div>
+  </div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://cdn.socket.io/4.8.1/socket.io.min.js"></script>
+  <script>
+    const bridgeUrl = `${location.protocol}//${location.hostname}:13000`;
+    const socket = io(bridgeUrl, { transports: ["websocket"] });
+
+    const statusEl = document.getElementById("status");
+    const lastEl = document.getElementById("last");
+    const nodesEl = document.getElementById("nodes");
+
+    const map = L.map('map').setView([-2.8974, -79.0045], 10);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+      attribution: '&copy; OpenStreetMap'
+    }).addTo(map);
+
+    const markers = new Map();
+    const lastData = new Map();
+
+    function upsertMarker(obj) {
+      const id = obj.id || "SIN_ID";
+      const hasFix = typeof obj.lat === "number" && typeof obj.lng === "number";
+
+      lastData.set(id, obj);
+
+      if (!hasFix) return;
+
+      const latlng = [obj.lat, obj.lng];
+      const text =
+        `<b>${id}</b><br>` +
+        `Lat: ${obj.lat.toFixed(6)}<br>` +
+        `Lng: ${obj.lng.toFixed(6)}<br>` +
+        (obj.sat !== undefined ? `Sat: ${obj.sat}<br>` : "") +
+        (obj.status ? `Status: ${obj.status}<br>` : "");
+
+      if (!markers.has(id)) {
+        const m = L.marker(latlng).addTo(map).bindPopup(text);
+        markers.set(id, m);
+      } else {
+        const m = markers.get(id);
+        m.setLatLng(latlng);
+        m.setPopupContent(text);
+      }
+    }
+
+    socket.on("connect", () => {
+      statusEl.innerHTML = `Estado: <span class="ok">conectado</span> a ${bridgeUrl}`;
+    });
+
+    socket.on("disconnect", () => {
+      statusEl.innerHTML = `Estado: <span class="warn">desconectado</span>`;
+    });
+
+    socket.on("gps", (msg) => {
+      lastEl.textContent = msg.raw;
+
+      let obj;
+      try {
+        obj = JSON.parse(msg.raw);
+      } catch (e) {
+        return;
+      }
+
+      if (obj.lat !== undefined) obj.lat = Number(obj.lat);
+      if (obj.lng !== undefined) obj.lng = Number(obj.lng);
+      if (obj.sat !== undefined) obj.sat = Number(obj.sat);
+
+      upsertMarker(obj);
+
+      const ids = new Set([...lastData.keys()]);
+      nodesEl.textContent = ids.size.toString();
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,77 @@
+services:
+  mosquitto:
+    image: eclipse-mosquitto:2
+    container_name: mosquitto
+    restart: unless-stopped
+    ports:
+      - "1883:1883"
+    volumes:
+      - ./mosquitto/config:/mosquitto/config
+      - ./mosquitto/data:/mosquitto/data
+      - ./mosquitto/log:/mosquitto/log
+
+  postgres:
+    image: postgres:16
+    container_name: gps-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: gpsdb
+      POSTGRES_USER: gpsuser
+      POSTGRES_PASSWORD: gpspass
+    ports:
+      - "15432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  influxdb:
+    image: influxdb:2.7
+    container_name: influxdb
+    restart: unless-stopped
+    ports:
+      - "8086:8086"
+    environment:
+      DOCKER_INFLUXDB_INIT_MODE: setup
+      DOCKER_INFLUXDB_INIT_USERNAME: admin
+      DOCKER_INFLUXDB_INIT_PASSWORD: adminadmin
+      DOCKER_INFLUXDB_INIT_ORG: gpsorg
+      DOCKER_INFLUXDB_INIT_BUCKET: gpsbucket
+      DOCKER_INFLUXDB_INIT_ADMIN_TOKEN: supersecrettoken
+    volumes:
+      - influxdb_data:/var/lib/influxdb2
+
+  bridge:
+    build: ./bridge
+    container_name: mqtt-bridge
+    restart: unless-stopped
+    environment:
+      MQTT_HOST: mosquitto
+      MQTT_PORT: 1883
+      MQTT_TOPIC: gps/lora/#
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: gpsdb
+      POSTGRES_USER: gpsuser
+      POSTGRES_PASSWORD: gpspass
+      INFLUX_URL: http://influxdb:8086
+      INFLUX_TOKEN: supersecrettoken
+      INFLUX_ORG: gpsorg
+      INFLUX_BUCKET: gpsbucket
+    depends_on:
+      - mosquitto
+      - postgres
+      - influxdb
+    ports:
+      - "13000:3000"
+
+  web:
+    image: nginx:alpine
+    container_name: gps-web
+    restart: unless-stopped
+    volumes:
+      - ./web:/usr/share/nginx/html:ro
+    ports:
+      - "8080:80"
+
+volumes:
+  postgres_data:
+  influxdb_data:
