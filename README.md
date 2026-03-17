@@ -233,8 +233,8 @@ docker logs -f mqtt-bridge
 ## 👨‍💻 Autores
 
 **Carlos Andrés Genovez Tobar**
-**Mauricio Xavier Loor Garcia **
-**Erick Sebastian Parra Ulloa **
+**Mauricio Xavier Loor Garcia**
+**Erick Sebastian Parra Ulloa**
 
 ---
 
